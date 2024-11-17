@@ -1,0 +1,90 @@
+module ReaperExample
+
+from "wasi/process" include Process
+from "array" include Array
+from "set" include Set
+from "map" include Map
+from "./reaper.gr" include Reaper
+
+// Read the command line arguments
+let getArguments = demoExample => {
+  match (demoExample) {
+    // Demo from command line
+    0 => {
+      // Get the command line arguments
+      let args = match (Process.argv()) {
+        Ok(args) => args,
+        // Note: Most likely a wasi permissions error
+        Err(_) => fail "Failed to read command line arguments",
+      }
+      // Trim the runner binary or file (Different per wasm runtime)
+      Array.slice(1, args)
+    },
+    // Static Demos
+    1 => [> // Fully featured
+      "restValue",
+      "-h",
+      "--verbose",
+      "--profile=release", // can use equal
+      "--profile2", // cam use space based base
+      "debug",
+      "--bool",
+      "true",
+      "--bool", // overwrite
+      "false",
+      "--float",
+      "3.14",
+      "--int",
+      "42",
+      "--string",
+      "hello",
+      "--multi",
+      "1",
+      "--multi",
+      "2",
+      "--multi",
+      "3",
+      "-abc",
+      "--", // Anything after is skipped when passArgs=true
+      "skippedParsing",
+      "-s",
+      "--also-skipped",
+    ],
+    _ => fail "Invalid demo number",
+  }
+}
+let args = getArguments(0)
+// Parse the arguments
+let options = Reaper.parse(
+  aliases=[> ("h", "help")],
+  presence=[> "help", "a", "b", "c"],
+  bools=[> "verbose", "bool"],
+  floats=[> "float"],
+  ints=[> "int"],
+  strings=[> "string", "profile", "profile2"],
+  multi=[> "multi"],
+  args
+)
+// Print the parsed options
+match (options) {
+  // Note: The arguments were parsed successfully
+  Ok(options) => {
+    print("Presence: " ++ toString(Set.Immutable.toList(options.presence)))
+    print("Bools: " ++ toString(Map.Immutable.toList(options.bools)))
+    print("Floats: " ++ toString(Map.Immutable.toList(options.floats)))
+    print("Ints: " ++ toString(Map.Immutable.toList(options.ints)))
+    print("Strings: " ++ toString(Map.Immutable.toList(options.strings)))
+    print("Multi: " ++ toString(Map.Immutable.toList(options.multi)))
+    print("Rest: " ++ toString(options.rest))
+    print("Passed Args: " ++ toString(options.passedArgs))
+    // print(options)
+  },
+  // Note: Expected Value Errors
+  Err(ExpectedBoolean(_) as err) => fail Reaper.toStringError(err),
+  Err(ExpectedNumber(_) as err) => fail Reaper.toStringError(err),
+  Err(ExpectedFloat(_) as err) => fail Reaper.toStringError(err),
+  Err(ExpectedInteger(_) as err) => fail Reaper.toStringError(err),
+  Err(ExpectedString(_) as err) => fail Reaper.toStringError(err),
+  // Note: An unknown argument was given
+  Err(UnknownArgument(_) as err) => fail Reaper.toStringError(err),
+}

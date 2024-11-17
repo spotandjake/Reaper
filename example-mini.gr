@@ -1,0 +1,42 @@
+module ReaperExample
+
+from "wasi/process" include Process
+from "array" include Array
+from "set" include Set
+from "map" include Map
+from "./reaper.gr" include Reaper
+
+// Get the command line arguments
+let args = match (Process.argv()) {
+  // Trim the runner binary or file (Different per wasm runtime)
+  Ok(args) => Array.slice(1, args),
+  // Note: Most likely a wasi permissions error
+  Err(_) => fail "Failed to read command line arguments",
+}
+// Parse the arguments
+let options = Reaper.parse(
+  aliases=[> ("h", "help")],
+  presence=[> "help", "a", "b", "c"],
+  bools=[> "verbose", "bool"],
+  floats=[> "float"],
+  ints=[> "int"],
+  strings=[> "string", "profile", "profile2"],
+  multi=[> "multi"],
+  args
+)
+// Print the parsed options
+match (options) {
+  // Note: The arguments were parsed successfully
+  Ok(options) => {
+    print("Presence: " ++ toString(Set.Immutable.toList(options.presence)))
+    print("Bools: " ++ toString(Map.Immutable.toList(options.bools)))
+    print("Floats: " ++ toString(Map.Immutable.toList(options.floats)))
+    print("Ints: " ++ toString(Map.Immutable.toList(options.ints)))
+    print("Strings: " ++ toString(Map.Immutable.toList(options.strings)))
+    print("Multi: " ++ toString(Map.Immutable.toList(options.multi)))
+    print("Rest: " ++ toString(options.rest))
+    print("Passed Args: " ++ toString(options.passedArgs))
+  },
+  // Note: An unknown argument was given
+  Err(err) => fail Reaper.toStringError(err),
+}

@@ -1,0 +1,376 @@
+module Reaper
+
+from "map" include Map
+from "set" include Set
+from "array" include Array
+from "list" include List
+from "char" include Char
+from "string" include String
+from "number" include Number
+
+/**
+ * Represents an error that occurred while parsing arguments.
+ *
+ * @since v0.1.0
+ */
+provide enum ReaperError {
+  /**
+   * The given argument was expected to be a boolean.
+   */
+  ExpectedBoolean(String),
+  /**
+   * The given argument was expected to be a number.
+   */
+  ExpectedNumber(String),
+  /**
+   * The given argument was expected to be a float.
+   */
+  ExpectedFloat(String),
+  /**
+   * The given argument was expected to be an integer.
+   */
+  ExpectedInteger(String),
+  /**
+   * The given argument was expected to be a string.
+   */
+  ExpectedString(String),
+  /**
+   * An unknown argument was given.
+   */
+  UnknownArgument(String),
+}
+
+/**
+ * Represents the options that were parsed from the arguments.
+ *
+ * @since v0.1.0
+ */
+provide record Options {
+  /**
+   * The arguments that were parsed as presence arguments.
+   */
+  presence: Set.Immutable.Set<String>,
+  /**
+   * The arguments that were parsed as booleans.
+   */
+  bools: Map.Immutable.Map<String, Bool>,
+  /**
+   * The arguments that were parsed as numbers.
+   */
+  numbers: Map.Immutable.Map<String, Number>,
+  /**
+   * The arguments that were parsed as floats.
+   */
+  floats: Map.Immutable.Map<String, Number>,
+  /**
+   * The arguments that were parsed as integers.
+   */
+  ints: Map.Immutable.Map<String, Number>,
+  /**
+   * The arguments that were parsed as strings.
+   */
+  strings: Map.Immutable.Map<String, String>,
+  /**
+   * The arguments that were parsed as multiple strings.
+   */
+  multi: Map.Immutable.Map<String, List<String>>,
+  /**
+   * The arguments that were not parsed.
+   */
+  rest: List<String>,
+  /**
+   * The arguments that were passed after `--`.
+   */
+  passedArgs: List<String>,
+}
+
+// Helpers
+module Helpers {
+  provide let getValue = items => {
+    match (items) {
+      [name, ...rest] when !String.startsWith("-", name) => Some((name, rest)),
+      _ => None,
+    }
+  }
+  provide let getBool = items => {
+    match (getValue(items)) {
+      Some(("true", rest)) => Some((true, rest)),
+      Some(("false", rest)) => Some((false, rest)),
+      _ => Some((true, items)),
+    }
+  }
+  provide let getNumber = items => {
+    match (getValue(items)) {
+      None => None,
+      Some((value, rest)) => {
+        match (Number.parse(value)) {
+          Err(_) => None,
+          Ok(value) => Some((value, rest)),
+        }
+      },
+    }
+  }
+  provide let getFloat = items => {
+    match (getValue(items)) {
+      None => None,
+      Some((value, rest)) => {
+        match (Number.parseFloat(value)) {
+          Err(_) => None,
+          Ok(value) => Some((value, rest)),
+        }
+      },
+    }
+  }
+  provide let getInt = items => {
+    match (getValue(items)) {
+      None => None,
+      Some((value, rest)) => {
+        match (Number.parseInt(value, radix=10)) {
+          Err(_) => None,
+          Ok(value) => Some((value, rest)),
+        }
+      },
+    }
+  }
+}
+use Helpers.*
+
+enum ArgumentType {
+  PresenceArg(String, List<String>),
+  BoolArg(Bool, List<String>),
+  NumberArg(Number, List<String>),
+  FloatArg(Number, List<String>),
+  IntArg(Number, List<String>),
+  StringArg(String, List<String>),
+  MultiArg(String, List<String>),
+}
+let getArgumentType = (
+  name,
+  rest,
+  (_, presence, bools, numbers, floats, ints, strings, multi, _),
+) => {
+  if (Array.contains(name, presence)) {
+    Ok(PresenceArg(name, rest))
+  } else if (Array.contains(name, bools)) {
+    match (getBool(rest)) {
+      None => Err(ExpectedBoolean(name)),
+      Some((value, rest)) => Ok(BoolArg(value, rest)),
+    }
+  } else if (Array.contains(name, numbers)) {
+    match (getNumber(rest)) {
+      None => Err(ExpectedNumber(name)),
+      Some((value, rest)) => Ok(NumberArg(value, rest)),
+    }
+  } else if (Array.contains(name, floats)) {
+    match (getFloat(rest)) {
+      None => Err(ExpectedFloat(name)),
+      Some((value, rest)) => Ok(FloatArg(value, rest)),
+    }
+  } else if (Array.contains(name, ints)) {
+    match (getInt(rest)) {
+      None => Err(ExpectedInteger(name)),
+      Some((value, rest)) => Ok(IntArg(value, rest)),
+    }
+  } else if (Array.contains(name, strings)) {
+    match (getValue(rest)) {
+      None => Err(ExpectedString(name)),
+      Some((value, rest)) => Ok(StringArg(value, rest)),
+    }
+  } else if (Array.contains(name, multi)) {
+    match (getValue(rest)) {
+      None => Err(ExpectedString(name)),
+      Some((value, rest)) => Ok(MultiArg(value, rest)),
+    }
+  } else {
+    Err(UnknownArgument(name))
+  }
+}
+let rec parseArg = (
+  items,
+  (aliases, presence, bools, numbers, floats, ints, strings, multi, passArgs) as config,
+  opts,
+) => {
+  match (items) {
+    [] => Ok(opts),
+    [rawName, ...rest] => {
+      let name = Array.toList(String.explode(rawName))
+      match (name) {
+        ['-', '-'] when passArgs => Ok({ ...opts, passedArgs: rest }),
+        ['-', '-'] => Err(UnknownArgument("-")),
+        // Splits -abc into -a -b -c
+        ['-', ...name] when String.length(rawName) != 2 &&
+          !String.startsWith("--", rawName) => {
+          parseArg(
+            List.reduce(
+              (acc, char) => ["-" ++ Char.toString(char), ...acc],
+              rest,
+              name
+            ),
+            config,
+            opts
+          )
+        },
+        ['-', '-', ...name] | ['-', ...name] => {
+          // TODO: Support foo.bar syntax
+          let name = Array.fromList(name)
+          let (name, rest) = match (Array.findIndex(char => char == '=', name)) {
+            None => (name, rest),
+            Some(index) => {
+              (
+                Array.slice(0, end=index, name),
+                [String.implode(Array.slice(index + 1, name)), ...rest],
+              )
+            },
+          }
+          let name = String.implode(name)
+          let name = match (Array.find(((key, _)) => key == name, aliases)) {
+            None => name,
+            Some((_, name)) => name,
+          }
+          match (getArgumentType(name, rest, config)) {
+            Ok(argumentType) => {
+              let (rest, opts) = match (argumentType) {
+                PresenceArg(name, rest) =>
+                  (
+                    rest,
+                    {
+                      ...opts,
+                      presence: Set.Immutable.add(name, opts.presence),
+                    },
+                  ),
+                BoolArg(value, rest) =>
+                  (
+                    rest,
+                    {
+                      ...opts,
+                      bools: Map.Immutable.set(name, value, opts.bools),
+                    },
+                  ),
+                NumberArg(value, rest) =>
+                  (
+                    rest,
+                    {
+                      ...opts,
+                      numbers: Map.Immutable.set(name, value, opts.numbers),
+                    },
+                  ),
+                FloatArg(value, rest) =>
+                  (
+                    rest,
+                    {
+                      ...opts,
+                      floats: Map.Immutable.set(name, value, opts.floats),
+                    },
+                  ),
+                IntArg(value, rest) =>
+                  (
+                    rest,
+                    { ...opts, ints: Map.Immutable.set(name, value, opts.ints) },
+                  ),
+                StringArg(value, rest) =>
+                  (
+                    rest,
+                    {
+                      ...opts,
+                      strings: Map.Immutable.set(name, value, opts.strings),
+                    },
+                  ),
+                MultiArg(value, rest) =>
+                  (
+                    rest,
+                    {
+                      ...opts,
+                      multi: match (Map.Immutable.get(name, opts.multi)) {
+                        Some(values) =>
+                          Map.Immutable.set(
+                            name,
+                            [value, ...values],
+                            opts.multi
+                          ),
+                        None => Map.Immutable.set(name, [value], opts.multi),
+                      },
+                    },
+                  ),
+              }
+              parseArg(rest, config, opts)
+            },
+            Err(err) => Err(err),
+          }
+        },
+        _ => parseArg(rest, config, { ...opts, rest: [rawName, ...opts.rest] }),
+      }
+    },
+  }
+}
+
+/**
+ * Parses the given arguments using the provided configuration.
+ *
+ * @param aliases: A list of aliases for the arguments
+ * @param presence: A list of arguments that can be present
+ * @param bools: A list of arguments that should be parsed as booleans
+ * @param numbers: A list of arguments that should be parsed as numbers
+ * @param floats: A list of arguments that should be parsed as floats
+ * @param ints: A list of arguments that should be parsed as integers
+ * @param strings: A list of arguments that should be parsed as strings
+ * @param multi: A list of arguments that should be parsed as multiple strings
+ * @param passArgs: Whether to skip arguments after `--`
+ * @param args: The arguments to parse
+ *
+ * @returns `Ok(options)` where options is a record containing the parsed arguments, `Err(error)` otherwise
+ *
+ * @example Reaper.parse(aliases=[>("h", "help")], presence=[> "help" ], bools=[> "verbose"], [> "-h", "--verbose"])
+ *
+ * @since v0.1.0
+ */
+provide let parse = (
+  aliases=[>],
+  presence=[>],
+  bools=[>],
+  numbers=[>],
+  floats=[>],
+  ints=[>],
+  strings=[>],
+  multi=[>],
+  passArgs=true,
+  args,
+) => {
+  parseArg(
+    Array.toList(args),
+    (aliases, presence, bools, numbers, floats, ints, strings, multi, passArgs),
+    {
+      presence: Set.Immutable.empty,
+      bools: Map.Immutable.empty,
+      numbers: Map.Immutable.empty,
+      floats: Map.Immutable.empty,
+      ints: Map.Immutable.empty,
+      strings: Map.Immutable.empty,
+      multi: Map.Immutable.empty,
+      rest: [],
+      passedArgs: [],
+    }
+  )
+}
+
+/**
+ * Converts the given Reaper error into a string.
+ *
+ * @param err: The error to convert.
+ *
+ * @returns The error message.
+ *
+ * @example toStringError(UnknownArgument("foo")) == "Unexpected argument: foo"
+ * @example toStringError(ExpectedBoolean("foo")) == "Expected a boolean value for argument: foo"
+ *
+ * @since v0.1.0
+ */
+provide let toStringError = err => {
+  match (err) {
+    ExpectedBoolean(name) => "Expected a boolean value for argument: " ++ name,
+    ExpectedNumber(name) => "Expected a number value for argument: " ++ name,
+    ExpectedFloat(name) => "Expected a float value for argument: " ++ name,
+    ExpectedInteger(name) => "Expected an integer value for argument: " ++ name,
+    ExpectedString(name) => "Expected a string value for argument: " ++ name,
+    UnknownArgument(name) => "Unexpected argument: " ++ name,
+  }
+}
