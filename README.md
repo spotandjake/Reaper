@@ -12,7 +12,7 @@ Running the code below with `grain example.gr -- --verbose -h` will give the res
 ```
 Presence: ["a", "b", "help"]
 Bools: [("verbose", true)]
-Floats: []
+Numbers: []
 Ints: []
 Strings: []
 Multi: []
@@ -43,7 +43,7 @@ let options = Reaper.parse(
   aliases=[> ("h", "help")],
   presence=[> "help", "a", "b", "c"],
   bools=[> "verbose", "bool"],
-  floats=[> "float"],
+  numbers=[> "float"],
   ints=[> "int"],
   strings=[> "string", "profile", "profile2"],
   multi=[> "multi"],
@@ -55,7 +55,7 @@ match (options) {
   Ok(options) => {
     print("Presence: " ++ toString(Set.Immutable.toList(options.presence)))
     print("Bools: " ++ toString(Map.Immutable.toList(options.bools)))
-    print("Floats: " ++ toString(Map.Immutable.toList(options.floats)))
+    print("Numbers: " ++ toString(Map.Immutable.toList(options.numbers)))
     print("Ints: " ++ toString(Map.Immutable.toList(options.ints)))
     print("Strings: " ++ toString(Map.Immutable.toList(options.strings)))
     print("Multi: " ++ toString(Map.Immutable.toList(options.multi)))
