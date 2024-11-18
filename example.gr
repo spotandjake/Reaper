@@ -63,6 +63,7 @@ let options = Reaper.parse(
   ints=[> "int"],
   strings=[> "string", "profile", "profile2"],
   multi=[> "multi"],
+  defaults=[> ("float", ReaperNumber(0.0))],
   args
 )
 // Print the parsed options
