@@ -22,7 +22,7 @@ Passed Args: []
 
 example.gr:
 
-```rs
+```gr
 module ReaperExample
 
 from "wasi/process" include Process
